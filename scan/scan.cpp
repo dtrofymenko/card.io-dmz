@@ -145,7 +145,16 @@ void scanner_result(ScannerState *state, ScannerResult *result) {
       }
     }
     dmz_debug_print("\n");
-
+  
+    dmz_debug_print("Detected number: ");
+    for(int i = 0; i < result->n_numbers; i++) {
+      uint8_t number_at_index = number_as_u8s[i];
+      dmz_debug_print("%d", number_at_index);
+      if (0 == (i + 1) % 4) {
+        dmz_debug_print(" ");
+      }
+    }
+    dmz_debug_print("\n");
     // Don't return a number that fails basic prefix sanity checks
     CardType card_type = dmz_card_info_for_prefix_and_length(number_as_u8s, result->n_numbers, false).card_type;
     if(card_type != CardTypeAmbiguous &&

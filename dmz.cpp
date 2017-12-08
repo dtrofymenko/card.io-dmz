@@ -276,6 +276,48 @@ bool dmz_found_all_edges(dmz_edges found_edges) {
 }
 
 #pragma mark: detection_boxes_for_sample
+DetectionBoxes detection_boxes_for_slopRects(CvRect outerSlopRect, CvRect innerSlopRect) {
+  DetectionBoxes boxes;
+  dmz_trace_log("innerSlopRect: {x:%i y:%i w:%i h:%i}", innerSlopRect.x, innerSlopRect.y, innerSlopRect.width, innerSlopRect.height);
+  dmz_trace_log("outerSlopRect: {x:%i y:%i w:%i h:%i}", outerSlopRect.x, outerSlopRect.y, outerSlopRect.width, outerSlopRect.height);
+  
+  boxes.top = cvRect(innerSlopRect.x, outerSlopRect.y,
+                     innerSlopRect.width, innerSlopRect.y - outerSlopRect.y);
+  dmz_trace_log("boxes.top: {x:%i y:%i w:%i h:%i}", boxes.top.x, boxes.top.y, boxes.top.width, boxes.top.height);
+  boxes.bottom = cvRect(innerSlopRect.x, innerSlopRect.y + innerSlopRect.height,
+                        innerSlopRect.width, (outerSlopRect.y + outerSlopRect.height) - (innerSlopRect.y + innerSlopRect.height));
+  dmz_trace_log("boxes.bottom: {x:%i y:%i w:%i h:%i}", boxes.bottom.x, boxes.bottom.y, boxes.bottom.width, boxes.bottom.height);
+
+  boxes.left = cvRect(outerSlopRect.x, innerSlopRect.y,
+                      innerSlopRect.x - outerSlopRect.x, innerSlopRect.height);
+  dmz_trace_log("boxes.left: {x:%i y:%i w:%i h:%i}", boxes.left.x, boxes.left.y, boxes.left.width, boxes.left.height);
+  
+  boxes.right = cvRect(innerSlopRect.x + innerSlopRect.width, innerSlopRect.y,
+                        (outerSlopRect.x +  outerSlopRect.width) - (innerSlopRect.x + innerSlopRect.width), innerSlopRect.height);
+  dmz_trace_log("boxes.right: {x:%i y:%i w:%i h:%i}", boxes.right.x, boxes.right.y, boxes.right.width, boxes.right.height);
+
+  return boxes;
+}
+
+DetectionBoxes detection_boxes_for_sample_relative(IplImage *sample, FrameOrientation orientation, dmz_relative_guide relative_guide) {
+  CvSize size = cvGetSize(sample);
+  dmz_trace_log("detection_boxes_for_sample sized %ix%i with orientation:%i", size.width, size.height, orientation);
+
+  CvRect image_rect = cvRect((int)roundf(relative_guide.left * size.width),
+                             (int)roundf(relative_guide.top * size.height),
+                             (int)roundf(relative_guide.width * size.width) - 1,
+                             (int)roundf(relative_guide.height * size.height) - 1);
+  int absolute_slop_vert = (int)roundf(image_rect.height * 0.05);
+  int absolute_slop_horiz = (int)roundf(image_rect.width * 0.05);
+  dmz_trace_log("image_rect: {x:%i y:%i w:%i h:%i}", image_rect.x, image_rect.y, image_rect.width, image_rect.height);
+  
+  CvRect outerSlopRect = cvInsetRect(image_rect, -absolute_slop_horiz, -absolute_slop_vert);
+  CvRect innerSlopRect = cvInsetRect(image_rect, absolute_slop_horiz, absolute_slop_vert);
+  
+  DetectionBoxes boxes = detection_boxes_for_slopRects(outerSlopRect, innerSlopRect);
+  return boxes;
+}
+
 DetectionBoxes detection_boxes_for_sample(IplImage *sample, FrameOrientation orientation) {
   CvSize size = cvGetSize(sample);
   dmz_trace_log("detection_boxes_for_sample sized %ix%i with orientation:%i", size.width, size.height, orientation);
@@ -320,24 +362,9 @@ DetectionBoxes detection_boxes_for_sample(IplImage *sample, FrameOrientation ori
                                      absolute_inset_horiz + absolute_slop_horiz,
                                      absolute_inset_vert + absolute_slop_vert);
 
-  DetectionBoxes boxes;
-
-  boxes.top = cvRect(innerSlopRect.x, outerSlopRect.y,
-                     innerSlopRect.width, 2 * absolute_slop_vert);
-  dmz_trace_log("boxes.top: {x:%i y:%i w:%i h:%i}", boxes.top.x, boxes.top.y, boxes.top.width, boxes.top.height);
-  boxes.bottom = cvRect(innerSlopRect.x, innerSlopRect.y + innerSlopRect.height,
-                        innerSlopRect.width, 2 * absolute_slop_vert);
-  dmz_trace_log("boxes.bottom: {x:%i y:%i w:%i h:%i}", boxes.bottom.x, boxes.bottom.y, boxes.bottom.width, boxes.bottom.height);
-
-  boxes.left = cvRect(outerSlopRect.x, innerSlopRect.y,
-                      2 * absolute_slop_horiz, innerSlopRect.height);
-  dmz_trace_log("boxes.left: {x:%i y:%i w:%i h:%i}", boxes.left.x, boxes.left.y, boxes.left.width, boxes.left.height);
-  
-  boxes.right = cvRect(innerSlopRect.x + innerSlopRect.width, innerSlopRect.y,
-                       2 * absolute_slop_horiz, innerSlopRect.height);
-  dmz_trace_log("boxes.right: {x:%i y:%i w:%i h:%i}", boxes.right.x, boxes.right.y, boxes.right.width, boxes.right.height);
-
+  DetectionBoxes boxes = detection_boxes_for_slopRects(outerSlopRect, innerSlopRect);
   return boxes;
+
 }
 
 #define kNumColorPlanes 3
@@ -368,8 +395,26 @@ void find_line_in_detection_rects(IplImage **samples, float *rho_multiplier, CvR
   dmz_trace_log("resulting edge - {found:%i ...}", found_edge->found);
 }
 
-bool dmz_detect_edges(IplImage *y_sample, IplImage *cb_sample, IplImage *cr_sample,
-                      FrameOrientation orientation, dmz_edges *found_edges, dmz_corner_points *corner_points) {
+bool dmz_detect_edges(IplImage *y_sample,
+                      IplImage *cb_sample, IplImage *cr_sample,
+                      FrameOrientation orientation,
+                      dmz_edges *found_edges,
+                      dmz_corner_points *corner_points) {
+  dmz_relative_guide relative_guide = dmz_relative_guide();
+  relative_guide.left = 0.0;
+  relative_guide.top = 0.0;
+  relative_guide.width = 0.0;
+  relative_guide.height = 0.0;
+  return dmz_detect_guided_edges(y_sample, cb_sample, cr_sample, relative_guide, orientation, found_edges, corner_points);
+}
+
+bool dmz_detect_guided_edges(IplImage *y_sample,
+                             IplImage *cb_sample,
+                             IplImage *cr_sample,
+                             dmz_relative_guide relative_guide,
+                             FrameOrientation orientation,
+                             dmz_edges *found_edges,
+                             dmz_corner_points *corner_points) {
   assert(y_sample != NULL);
   assert(cb_sample != NULL);
   assert(cr_sample != NULL);
@@ -377,13 +422,17 @@ bool dmz_detect_edges(IplImage *y_sample, IplImage *cb_sample, IplImage *cr_samp
   assert(corner_points != NULL);
 
   dmz_trace_log("dmz_detect_edges");
-
+  dmz_trace_log("relative_guide: {x:%f y:%f w:%f h:%f}", relative_guide.top, relative_guide.left, relative_guide.width, relative_guide.height);
   IplImage *samples[kNumColorPlanes] = {y_sample, cb_sample, cr_sample};
   DetectionBoxes boxes[kNumColorPlanes];
   float rho_multiplier[kNumColorPlanes] = {1.0f, 2.0f, 2.0f}; // cb and cr are half the size of Y
 
   for(int i = 0; i < kNumColorPlanes; i++) {
-    boxes[i] = detection_boxes_for_sample(samples[i], orientation);
+    if (0.0 == relative_guide.top) {
+      boxes[i] = detection_boxes_for_sample(samples[i], orientation);
+    } else {
+      boxes[i] = detection_boxes_for_sample_relative(samples[i], orientation, relative_guide);
+    }
   }
 
   dmz_trace_log("got boxes, looking for lines...");

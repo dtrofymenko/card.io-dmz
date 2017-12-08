@@ -36,6 +36,13 @@ typedef struct {
   dmz_found_edge right;
 } dmz_edges;
 
+typedef struct {
+  float top;
+  float left;
+  float width;
+  float height;
+} dmz_relative_guide;
+
 typedef struct ScannerState ScannerState;
 
 
@@ -85,7 +92,13 @@ bool dmz_found_all_edges(dmz_edges found_edges);
 // The boolean return value indicates whether a card was successfully detected.
 bool dmz_detect_edges(IplImage *y_sample, IplImage *cb_sample, IplImage *cr_sample,
                                        FrameOrientation orientation, dmz_edges *found_edges, dmz_corner_points *corner_points);
-
+bool dmz_detect_guided_edges(IplImage *y_sample,
+                             IplImage *cb_sample,
+                             IplImage *cr_sample,
+                             dmz_relative_guide relative_guide,
+                             FrameOrientation orientation,
+                             dmz_edges *found_edges,
+                             dmz_corner_points *corner_points);
 
 // TRANSFORMATION
 
