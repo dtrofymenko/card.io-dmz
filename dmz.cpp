@@ -109,6 +109,28 @@ void dmz_deinterleave_RGBA_to_R(uint8_t *source, uint8_t *dest, int size) {
   }
 }
 
+CvRect dmz_card_rect_for_guide(CvSize size, dmz_relative_guide relative_guide) {
+  CvRect image_rect = cvRectd(relative_guide.left * size.width,
+                              relative_guide.top * size.height,
+                              relative_guide.width * size.width,
+                              relative_guide.height * size.height);
+  image_rect.width -= 1;
+  image_rect.height -= 1;
+  return image_rect;
+}
+
+CvRect dmz_card_focus_rect_for_guide(CvSize size, dmz_relative_guide relative_guide, float focus_ratio) {
+  CvRect image_rect = dmz_card_rect_for_guide(size, relative_guide);
+  if (1.0 == focus_ratio) {
+    return image_rect;
+  }
+  CvRect focus_rect = cvRectd(image_rect.x + (1 - focus_ratio) / 2.0 * image_rect.width,
+                              image_rect.y + (1 - focus_ratio) / 2.0 * image_rect.height,
+                              focus_ratio * image_rect.width,
+                              focus_ratio * image_rect.height);
+  return focus_rect;
+}
+
 #pragma mark focus score
 
 float dmz_focus_score_for_image(IplImage *image) {
@@ -162,6 +184,22 @@ CvRect dmz_card_rect_for_screen(CvSize standardCardSize, CvSize standardScreenSi
   return actualCardRect;
 }
 
+void dmz_set_roi_for_scoring_relative(IplImage *image, bool use_full_image, dmz_relative_guide relative_guide) {
+  // Usually we calculate the focus score only on the center 1/9th of the credit card
+  // in the image (assume it is centered), for performance reasons
+  float focus_ratio;
+  if (use_full_image) {
+    focus_ratio = 1.0;
+  }
+  else {
+    focus_ratio = 1.0 / 3.0;
+  }
+  
+  CvRect focus_rect = dmz_card_focus_rect_for_guide(cvGetSize(image), relative_guide, focus_ratio);
+  
+  cvSetImageROI(image, focus_rect);
+}
+
 void dmz_set_roi_for_scoring(IplImage *image, bool use_full_image) {
   // Usually we calculate the focus score only on the center 1/9th of the credit card
   // in the image (assume it is centered), for performance reasons
@@ -180,6 +218,7 @@ void dmz_set_roi_for_scoring(IplImage *image, bool use_full_image) {
   cvSetImageROI(image, focus_rect);
 }
 
+
 float dmz_focus_score(IplImage *image, bool use_full_image) {
   dmz_set_roi_for_scoring(image, use_full_image);
   float focus_score = dmz_focus_score_for_image(image);
@@ -189,6 +228,20 @@ float dmz_focus_score(IplImage *image, bool use_full_image) {
 
 float dmz_brightness_score(IplImage *image, bool use_full_image) {
   dmz_set_roi_for_scoring(image, use_full_image);
+  float focus_score = dmz_brightness_score_for_image(image);
+  cvResetImageROI(image);
+  return focus_score;
+}
+
+float dmz_focus_score_relative(IplImage *image, bool use_full_image, dmz_relative_guide relative_guide) {
+  dmz_set_roi_for_scoring_relative(image, use_full_image, relative_guide);
+  float focus_score = dmz_focus_score_for_image(image);
+  cvResetImageROI(image);
+  return focus_score;
+}
+
+float dmz_brightness_score_relative(IplImage *image, bool use_full_image, dmz_relative_guide relative_guide) {
+  dmz_set_roi_for_scoring_relative(image, use_full_image, relative_guide);
   float focus_score = dmz_brightness_score_for_image(image);
   cvResetImageROI(image);
   return focus_score;
@@ -303,12 +356,9 @@ DetectionBoxes detection_boxes_for_sample_relative(IplImage *sample, FrameOrient
   CvSize size = cvGetSize(sample);
   dmz_trace_log("detection_boxes_for_sample sized %ix%i with orientation:%i", size.width, size.height, orientation);
 
-  CvRect image_rect = cvRect((int)roundf(relative_guide.left * size.width),
-                             (int)roundf(relative_guide.top * size.height),
-                             (int)roundf(relative_guide.width * size.width) - 1,
-                             (int)roundf(relative_guide.height * size.height) - 1);
-  int absolute_slop_vert = (int)roundf(image_rect.height * 0.05);
-  int absolute_slop_horiz = (int)roundf(image_rect.width * 0.05);
+  CvRect image_rect = dmz_card_rect_for_guide(size, relative_guide);
+  int absolute_slop_vert = (int)round(image_rect.height * 0.05);
+  int absolute_slop_horiz = (int)round(image_rect.width * 0.05);
   dmz_trace_log("image_rect: {x:%i y:%i w:%i h:%i}", image_rect.x, image_rect.y, image_rect.width, image_rect.height);
   
   CvRect outerSlopRect = cvInsetRect(image_rect, -absolute_slop_horiz, -absolute_slop_vert);

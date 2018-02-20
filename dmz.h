@@ -82,8 +82,10 @@ void dmz_YCbCr_to_RGB(IplImage *y, IplImage *cb, IplImage *cr, IplImage **rgb);
 // DETECTION
 
 float dmz_focus_score(IplImage *image, bool use_full_image);
+float dmz_focus_score_relative(IplImage *image, bool use_full_image, dmz_relative_guide relative_guide);
 
 float dmz_brightness_score(IplImage *image, bool use_full_image);
+float dmz_brightness_score_relative(IplImage *image, bool use_full_image, dmz_relative_guide relative_guide);
 
 // Convenience method that returns whether a set of found_edges contains all edges as being found.
 bool dmz_found_all_edges(dmz_edges found_edges);
